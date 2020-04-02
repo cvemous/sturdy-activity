@@ -17,11 +17,12 @@ final class Link
 	private $translator;
 	private $basePath;
 	private $namespace;
-	private $resource;
+	private $reference;
 	private $templated;
 	private $name;
 	private $slot;
 	private $label;
+	private $sublabel;
 	private $icon;
 	private $disabled;
 	private $target;
@@ -29,17 +30,33 @@ final class Link
 	private $mainClass;
 	private $mainQuery;
 
-	public function __construct(SharedStateStore $store, Translator $translator, string $basePath, string $namespace, ?CacheItem_Resource $resource, bool $mainClass = false, array $mainQuery = [])
+	public function __construct(
+		SharedStateStore $store,
+		Translator $translator,
+		string $basePath,
+		string $namespace,
+		$reference,
+		bool $mainClass = false,
+		array $mainQuery = [])
 	{
 		$this->store      = $store;
 		$this->translator = $translator;
 		$this->basePath   = $basePath;
 		$this->namespace  = $namespace;
-		$this->resource   = $resource;
+		$this->reference  = $reference;
 		$this->mainClass  = $mainClass;
 		$this->mainQuery  = $mainQuery;
-		if ($this->resource) {
-			foreach ($this->resource->getFields()??[] as [$name, $type, $defaultValue, $flags, $autocomplete, $label, $icon, $pool]) {
+		if ($this->reference instanceof CacheItem_Resource) {
+			foreach ($this->reference->getFields()??[] as [
+				$name,
+				$type,
+				$defaultValue,
+				$flags,
+				$autocomplete,
+				$label,
+				$icon,
+				$pool
+			]) {
 				$flags = new FieldFlags($flags);
 				if ($flags->isMeta()) {
 					$this->templated = true;
@@ -50,18 +67,33 @@ final class Link
 	}
 
 	/**
-	 * Expand link with values.
+	 * Expand link.
 	 *
-	 * @param  array   &$values          the values, is updated if shared state is in play
-	 * @param  bool     $allowTemplated  whether a templated link is allowed
+	 * @param  array   $metaData        the meta data; is updated if shared state is in play
+	 * @param  bool    $allowTemplated  whether a templated link is allowed
 	 * @return object
 	 */
-	public function expand(array &$values = [], bool $allowTemplated = true)/*: object */
+	public function expand(array $metaData = [], bool $allowTemplated = true)/*: object */
 	{
+		if (!isset($metaData['values'])) {
+			$metaData['values'] = [];
+		}
+		$values = &$metaData['values'];
+
+		if (isset($metaData['name'    ])) $this->setName    ($metaData['name'    ]);
+		if (isset($metaData['slot'    ])) $this->setSlot    ($metaData['slot'    ]);
+		if (isset($metaData['label'   ])) $this->setLabel   ($metaData['label'   ], $values);
+		if (isset($metaData['sublabel'])) $this->setSublabel($metaData['sublabel'], $values);
+		if (isset($metaData['icon'    ])) $this->setIcon    ($metaData['icon'    ]);
+		if (isset($metaData['selected'])) $this->setSelected($metaData['selected']);
+		if (isset($metaData['disabled'])) $this->setDisabled($metaData['disabled']);
+		if (isset($metaData['target'  ])) $this->setTarget  ($metaData['target'  ]);
+		if (isset($metaData['phase'   ])) $this->setPhase   ($metaData['phase'   ]);
+
 		$obj = new stdClass;
 
-		if ($this->resource !== null) {
-			$class = $this->resource->getClass();
+		if ($this->reference instanceof CacheItem_Resource) {
+			$class = $this->reference->getClass();
 			$path = strtolower(preg_replace('/([a-zA-Z])(?=[A-Z])/', '$1-', substr($class, strlen($this->namespace))));
 			$obj->href = $this->basePath . trim(strtr($path, "\\", "/"), "/");
 			$known = "";
@@ -69,7 +101,7 @@ final class Link
 			$selectedTrue = false;
 			$selectedFalse = false;
 
-			foreach ($this->resource->getFields()??[] as [$name, $type, $defaultValue, $flags, $autocomplete, $label, $icon, $pool]) {
+			foreach ($this->reference->getFields()??[] as [$name, $type, $defaultValue, $flags, $autocomplete, $label, $icon, $pool]) {
 				$flags = new FieldFlags($flags);
 				if ($flags->isMeta()) {
 					if ($flags->isReadonly() || $flags->isDisabled()) continue;
@@ -103,7 +135,7 @@ final class Link
 					if (array_key_exists($name, $values)) {
 						$value = $this->getValue($values, $name);
 					} else if ($flags->isShared() && $this->store->has($pool, $name)) {
-						$value = $values[$name] = $this->store->get($pool, $name);
+						$value = $this->store->get($pool, $name);
 					} else if (!$allowTemplated && $flags->isRequired()) {
 						throw new InternalServerError("Attempted to create link to $class but required field $name is missing.");
 					} else if ($this->mainClass && isset($this->mainQuery[$name])) {
@@ -139,6 +171,11 @@ final class Link
 			if ($selectedTrue && !$selectedFalse) {
 				$obj->selected = true;
 			}
+		} else if (is_string($this->reference)) {
+			$obj->href = $this->reference;
+			if (strpos($this->reference, "{") !== false) {
+				$obj->templated = true;
+			}
 		} else {
 			$obj->disabled = true;
 		}
@@ -151,6 +188,9 @@ final class Link
 		}
 		if ($this->label) {
 			$obj->label = $this->label;
+		}
+		if ($this->sublabel) {
+			$obj->sublabel = $this->sublabel;
 		}
 		if ($this->icon) {
 			$obj->icon = $this->icon;
@@ -215,6 +255,20 @@ final class Link
 	public function getLabel(): ?string
 	{
 		return $this->label;
+	}
+
+	public function setSublabel(?string $sublabel, array $values = []): void
+	{
+		if ($sublabel === null) {
+			$this->sublabel = null;
+		} else {
+			$this->sublabel = ($this->translator)($sublabel, $values);
+		}
+	}
+
+	public function getSublabel(): ?string
+	{
+		return $this->sublabel;
 	}
 
 	public function setIcon(?string $icon): void

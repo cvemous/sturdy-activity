@@ -69,17 +69,29 @@ final class Resource
 	/**
 	 * Create a link to be used inside the data section.
 	 *
-	 * @param  string $class  the class of the resource
-	 * @return ?Link          containing the href property and possibly the templated property
+	 * @param  string $reference  the reference of the link
+	 * @return ?Link  containing the href property and possibly the templated property
 	 */
-	public function createLink(?string $class): ?Link
+	public function createLink(?string $reference): ?Link
 	{
 		$this->updateStore();
-		if ($class === null) {
-			return new Link($this->sharedStateStore, $this->translator, $this->basePath, $this->namespace, null);
+		if ($reference === null) {
+			return new Link($this->sharedStateStore, $this->translator, $this->basePath,
+					$this->namespace, null);
 		} else {
-			$resource = $this->cache->getResource($this->sourceUnit, $class, $this->sharedStateStore->getTags());
-			return $resource ? new Link($this->sharedStateStore, $this->translator, $this->basePath, $this->namespace, $resource, $this->mainClass === $class, $this->query) : null;
+			if (strpos($reference, "/") !== false) {
+				return new Link($this->sharedStateStore, $this->translator, $this->basePath,
+						$this->namespace, $reference);
+			} else {
+				$resource = $this->cache->getResource($this->sourceUnit, $reference,
+						$this->sharedStateStore->getTags());
+				if ($resource) {
+					return new Link($this->sharedStateStore, $this->translator, $this->basePath,
+							$this->namespace, $resource, $this->mainClass === $reference, $this->query);
+				} else {
+					return null;
+				}
+			}
 		}
 	}
 
