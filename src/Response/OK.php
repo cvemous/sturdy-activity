@@ -141,16 +141,17 @@ final class OK implements Response
 	/**
 	 * Link to another resource.
 	 *
-	 * @param  string $name the name of the link
-	 * @param  string $class the class of the resource
-	 * @param  array $optionals optional arguments
-	 * @param array|null $values
+	 * @param  string $name       the name of the link
+	 * @param  string $class      the class of the resource
+	 * @param  array $metaData    meta data
 	 * @return bool  link succeeded
 	 *
-	 * $optionals = [
+	 * $metaData = [
+	 *   $name => string     the name of the link
 	 *   $values => array    used for both link and ICU expansion
 	 *   $slot => string     the slot the link is intended for
 	 *   $label => string    a ICU expandable message
+	 *   $sublabel => string a ICU expandable message
 	 *   $icon => string     a icon identifier
 	 *   $selected => bool   whether or not the link is selected
 	 *   $target => string   which tab/window to target, see the target attribute of HTML A tag
@@ -159,29 +160,15 @@ final class OK implements Response
 	 * ]
 	 * @throws InternalServerError
 	 */
-	public function link(string $name, ?string $class, array $optionals = [], array &$values = null): bool
+	public function link(string $name, ?string $class, array $metaData = []): bool
 	{
 		$link = $this->resource->createLink($class);
 		if ($link === null) return false;
-		$link->setName($name);
-		if ($values !== null) {
-			if (array_key_exists('values', $optionals)) {
-				$values = array_merge($optionals['values'], $values);
-			}
-		} else {
-			$values = $optionals['values'] ?? [];
-		}
-		if (isset($optionals['slot'    ])) $link->setSlot    ($optionals['slot'    ]);
-		if (isset($optionals['label'   ])) $link->setLabel   ($optionals['label'   ], $values);
-		if (isset($optionals['icon'    ])) $link->setIcon    ($optionals['icon'    ]);
-		if (isset($optionals['selected'])) $link->setSelected($optionals['selected']);
-		if (isset($optionals['disabled'])) $link->setDisabled($optionals['disabled']);
-		if (isset($optionals['target'  ])) $link->setTarget  ($optionals['target'  ]);
-		if (isset($optionals['phase'   ])) $link->setPhase   ($optionals['phase'   ]);
 		if (!isset($this->part->links)) {
 			$this->part->links = [];
 		}
-		$this->part->links[] = $link->expand($values);
+		$metaData['name'] = $name;
+		$this->part->links[] = $link->expand($metaData);
 		return true;
 	}
 
@@ -190,7 +177,7 @@ final class OK implements Response
 	 *
 	 * @param  string $name the name of the link
 	 * @param  string $class the class of the resource
-	 * @param  array $query the values in case the resource has uri fields
+	 * @param  array $metaData the meta data
 	 *
 	 * Please note that $attach is ignored if link is called from a Resource
 	 * that itself is attached by another resource.
@@ -198,25 +185,27 @@ final class OK implements Response
 	 * @throws FileNotFound
 	 * @throws InternalServerError
 	 */
-	public function attach(string $name, string $class, array $query = []): void
+	public function attach(string $name, string $class, array $metaData = []): void
 	{
-		if ($this->link($name, $class, [], $query)) {
+		if ($this->link($name, $class, $metaData)) {
 			array_push($this->stack, $name);
 			$previous = $this->part;
 
 			$this->parts->$name = $this->part = new stdClass;
 
-			foreach ($query as &$value) {
-				if ($value instanceof \JsonSerializable) {
-					$value = $value->jsonSerialize();
-				} else {
-					$value = (string)$value;
+			if ($metaData['values']) {
+				foreach ($metaData['values'] as &$value) {
+					if ($value instanceof \JsonSerializable) {
+						$value = $value->jsonSerialize();
+					} else {
+						$value = (string)$value;
+					}
 				}
 			}
 
 			$this->resource
 				->createAttachedResource($class, $name === "self")
-				->call([], $query, null);
+				->call([], $metaData['values']??[], null);
 
 			$this->part = $previous;
 			array_pop($this->stack);
@@ -227,10 +216,19 @@ final class OK implements Response
 	public function attachList(string $name, array $list, string $valueType = "uuid", string $labelType = "string")
 	{
 		$obj = new stdClass;
-		$obj->fields = [["name"=>"list", "type"=>"object", "array"=>true, "data"=>true, "defaultValue"=>[], "fields"=>[
-			["name"=>"value", "type"=>"$valueType"],
-			["name"=>"label", "type"=>"$labelType"],
-		]]];
+		$obj->fields = [
+			[
+				"name" => "list",
+				"type" => "object",
+				"array" => true,
+				"data" => true,
+				"defaultValue" => [],
+				"fields" => [
+					["name" => "value", "type" => "$valueType"],
+					["name" => "label", "type" => "$labelType"],
+				]
+			]
+		];
 		$obj->data = $list;
 		$this->parts->$name = $obj;
 	}
@@ -249,14 +247,14 @@ final class OK implements Response
 	/**
 	 * Link to another resource.
 	 *
-	 * @param  string $class the class of the resource
-	 * @param  array $optionals optional arguments
-	 * @return object|null  the link or null
+	 * @param  string $class    the class of the resource
+	 * @param  array $metaData  meta data
 	 *
-	 * $optionals = [
+	 * $metaData = [
 	 *   $values => array    used for both link and ICU expansion
 	 *   $slot => string     the slot the link is intended for
 	 *   $label => string    a ICU expandable message
+	 *   $sublabel => string a ICU expandable message
 	 *   $icon => string     a icon identifier
 	 *   $selected => bool   whether or not the link is selected
 	 *   $target => string   which tab/window to target, see the target attribute of HTML A tag
@@ -265,19 +263,11 @@ final class OK implements Response
 	 * ]
 	 * @throws InternalServerError
 	 */
-	public function createLink(string $class, array $optionals): ?object
+	public function createLink(string $class, array $metaData = []): ?object
 	{
 		$link = $this->resource->createLink($class);
 		if ($link === null) return null;
-		$values = $optionals['values'] ?? [];
-		if (isset($optionals['slot'    ])) $link->setSlot    ($optionals['slot'    ]);
-		if (isset($optionals['label'   ])) $link->setLabel   ($optionals['label'   ], $values);
-		if (isset($optionals['icon'    ])) $link->setIcon    ($optionals['icon'    ]);
-		if (isset($optionals['selected'])) $link->setSelected($optionals['selected']);
-		if (isset($optionals['disabled'])) $link->setDisabled($optionals['disabled']);
-		if (isset($optionals['target'  ])) $link->setTarget  ($optionals['target'  ]);
-		if (isset($optionals['phase'   ])) $link->setPhase   ($optionals['phase'   ]);
-		return $link->expand($values, false);
+		return $link->expand($metaData, false);
 	}
 
 	/**
@@ -291,7 +281,12 @@ final class OK implements Response
 	 */
 	public function notifyUser(string $type, string $title, string $text, string $icon = null)
 	{
-		$this->part->notifications[] = ['type' => $type, 'title' => ucfirst($title), 'text' => ucfirst($text), 'icon' => $icon];
+		$this->part->notifications[] = [
+			'type' => $type,
+			'title' => ucfirst($title),
+			'text' => ucfirst($text),
+			'icon' => $icon
+		];
 	}
 
 	public function translateNotifications(Translator $translator, array $translatorParameters): void
