@@ -247,22 +247,36 @@ final class OK implements Response
 	}
 
 	/**
-	 * Get a link to another resource.
+	 * Link to another resource.
 	 *
 	 * @param  string $class the class of the resource
-	 * @param array ...$values the values in case the resource has uri fields
-	 * @return object  the link
+	 * @param  array $optionals optional arguments
+	 * @return object|null  the link or null
+	 *
+	 * $optionals = [
+	 *   $values => array    used for both link and ICU expansion
+	 *   $slot => string     the slot the link is intended for
+	 *   $label => string    a ICU expandable message
+	 *   $icon => string     a icon identifier
+	 *   $selected => bool   whether or not the link is selected
+	 *   $target => string   which tab/window to target, see the target attribute of HTML A tag
+	 *   $phase => integer   sometimes you wish to differentiate between links, assign a number
+	 *                       from 0 to 10 to specify the phase variance of the link
+	 * ]
 	 * @throws InternalServerError
 	 */
-	public function getLink(string $class, array ...$values)/*: ?object*/
+	public function createLink(string $class, array $optionals): ?object
 	{
 		$link = $this->resource->createLink($class);
-		if (!$link) {
-			return null;
-		}
-		if (count($values)) {
-			$values = array_merge(...$values);
-		}
+		if ($link === null) return null;
+		$values = $optionals['values'] ?? [];
+		if (isset($optionals['slot'    ])) $link->setSlot    ($optionals['slot'    ]);
+		if (isset($optionals['label'   ])) $link->setLabel   ($optionals['label'   ], $values);
+		if (isset($optionals['icon'    ])) $link->setIcon    ($optionals['icon'    ]);
+		if (isset($optionals['selected'])) $link->setSelected($optionals['selected']);
+		if (isset($optionals['disabled'])) $link->setDisabled($optionals['disabled']);
+		if (isset($optionals['target'  ])) $link->setTarget  ($optionals['target'  ]);
+		if (isset($optionals['phase'   ])) $link->setPhase   ($optionals['phase'   ]);
 		return $link->expand($values, false);
 	}
 
