@@ -463,6 +463,7 @@ final class FieldParser
 				$this->clearbit($mask, 1);
 				$field->setType($type = new Type\TupleType());
 				$this->parseTuple($type);
+				$this->parseArray($flags);
 			} elseif ($this->isbitset($mask, 1) && $this->match('htmlToken')) {
 				$this->clearbit($mask, 1);
 				$field->setType($type = new Type\HTMLType());
