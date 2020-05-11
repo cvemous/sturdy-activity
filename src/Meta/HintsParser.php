@@ -13,6 +13,7 @@ final class HintsParser
 {
 	private $spaceToken;
 	private $nameToken;
+	private $arrayToken;
 	private $tagToken;
 	private $equalsToken;
 	private $valueToken;
@@ -42,6 +43,7 @@ final class HintsParser
 
 		$this->spaceToken         = "/^[\s\*]+/"; // include * character as space character to allow annotation in docblocks
 		$this->nameToken          = "/^($name)/";
+		$this->arrayToken         = "/^\[(0|[1-9][0-9]*)\]/";
 		$this->dashedNameToken    = "/^($dashedName)/";
 		$this->tagToken           = "/^#($name)/";
 		$this->equalsToken        = "/^=/";
@@ -128,7 +130,7 @@ final class HintsParser
 				$hints->setIcon($this->parseName());
 			} else if ($this->isbitset($mask, 3) && $this->match('sectionToken')) {
 				$this->clearbit($mask, 3);
-				$hints->setSection($this->parseName());
+				$hints->setSection($this->parseNameArray());
 			} else if ($this->isbitset($mask, 4) && $this->match('componentToken')) {
 				$this->clearbit($mask, 4);
 				$hints->setComponent($this->parseDashedName());
@@ -285,6 +287,57 @@ final class HintsParser
 					break;
 
 				case 2:
+					if ($this->match('spaceToken')) {
+						// do nothing
+					} elseif ($this->match('listEndToken')) {
+						break 2;
+					} else {
+						throw new ParserError($this->parseError("expected space or list end"));
+					}
+					break;
+			}
+		}
+		return $name;
+	}
+
+	private function parseNameArray(): string
+	{
+		$sequence = 0;
+		$name = null;
+		while ($this->valid()) {
+			switch ($sequence) {
+				case 0:
+					if ($this->match('spaceToken')) {
+						// do nothing
+					} elseif ($this->match('listStartToken')) {
+						++$sequence;
+					} else {
+						throw new ParserError($this->parseError("expected space or list start"));
+					}
+					break;
+
+				case 1:
+					if ($this->match('spaceToken')) {
+						// do nothing
+					} elseif ($this->match('nameToken', $name)) {
+						++$sequence;
+					} else {
+						throw new ParserError($this->parseError("expected space or name"));
+					}
+					break;
+
+				case 2:
+					if ($this->match('arrayToken', $order)) {
+						$name .= "[$order]";
+						++$sequence;
+					} elseif ($this->match('listEndToken')) {
+						break 2;
+					} else {
+						throw new ParserError($this->parseError("expected array token, space or list end"));
+					}
+					break;
+
+				case 3:
 					if ($this->match('spaceToken')) {
 						// do nothing
 					} elseif ($this->match('listEndToken')) {
