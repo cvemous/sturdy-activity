@@ -88,6 +88,7 @@ final class SourceUnitFactory
 			} catch (FieldParserError $e) {
 				echo $e->getMessage();
 			} catch (Throwable $e) {
+				echo "$file\n";
 				echo get_class($e), ": {$e->getMessage()}\n";
 				echo "## {$e->getFile()}:{$e->getLine()}\n";
 				echo $e->getTraceAsString(),"\n";
